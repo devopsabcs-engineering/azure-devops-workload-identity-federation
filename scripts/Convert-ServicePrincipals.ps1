@@ -52,15 +52,27 @@ function Get-AzureDevOpsOrganizationOverview {
     }
 
     # URL retrieved thanks to developer mod at page https://dev.azure.com/<organizationName>/_settings/organizationAad
+    $headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"    
+    $headers.Add("Authorization", "Bearer ${msalToken}")
+
     $response = Invoke-WebRequest -Uri "https://aexprodweu1.vsaex.visualstudio.com/_apis/EnterpriseCatalog/Organizations?tenantId=$tenantId" `
         -Method get -ContentType "application/json" `
-        -Headers @{Authorization = ("Bearer {0}" -f $msalToken) } | Select-Object -ExpandProperty content | ConvertFrom-Csv
+        -Headers $headers | Select-Object -ExpandProperty content | ConvertFrom-Csv
 
     $responseJson = $response | ConvertTo-Json -Depth $jsonDepth
 
     $outputFile = "organizations_${tenantId}.json"
     Set-Content -Value $responseJson -Path $outputFile
 }
+
+# Get-OrganizationId
+# This function is used to get the organization id for an organization name
+# Parameters
+#   organizationName: the name of the organization
+#   tenantId: the id of the tenant that this organization belongs to
+# Returns
+#   the id of the organization
+#   "" if the organization was not found
 
 function Get-OrganizationId {
     param (
@@ -94,12 +106,12 @@ function Get-Projects {
     param (
         [string] $organizationUrl
     )
-    # get projects - Implement continuation token       
+    # get projects - Implement continuation token
 
     $token = $null
     $allProjects = @()  
 
-    do {                
+    do {
         if ($null -eq $token) {
             $projectsRawJson = az devops project list --organization $organizationUrl
         }
@@ -108,7 +120,7 @@ function Get-Projects {
         }
 
         $projectsRaw = $projectsRawJson | ConvertFrom-Json -Depth $jsonDepth
-        $projects = $projectsRaw.value         
+        $projects = $projectsRaw.value
         $token = $projectsRaw.ContinuationToken
         
         $allProjects += $projects
@@ -146,7 +158,7 @@ function Get-ServiceConnections {
     Write-Host "refreshServiceConnectionsIfTheyExist: $refreshServiceConnectionsIfTheyExist"
     Write-Host "skipFetchingServiceConnections: $skipFetchingServiceConnections"
 
-    if ($skipFetchingServiceConnections) {        
+    if ($skipFetchingServiceConnections) {
         Write-Host "File $serviceConnectionJsonPath already exists and refreshServiceConnectionsIfTheyExist is set to false. Skipping..."
         $exported = $true
         return $exported
@@ -187,17 +199,17 @@ function Get-ServiceConnections {
                     Write-Warning "endpointId $endpointId already exists in hash table"
                     $isShared = $($armServiceEndpoint.isShared)
                     if ($isShared) {
-                        Write-Warning "connection is shared as expected"                        
+                        Write-Warning "connection is shared as expected"
                     }
-                    else {                        
+                    else {
                         throw "endpointId $endpointId already exists in hash table but is not shared"
                     }
                 }
                 else {
                     Write-Host "adding endpointId $endpointId to hash table"
                     $hashTableAdoResources.Add("$endpointId", $projSvcEndpoint)
-                }                
-            }            
+                }
+            }
         }
     }
     
@@ -225,7 +237,7 @@ function New-FederatedCredential {
         [Parameter(mandatory = $true)]
         [string] $organizationId
     )
-    $minifiedString = Get-Content .\credential.template.json | Out-String    
+    $minifiedString = Get-Content .\credential.template.json | Out-String
     $parametersJsonContent = (ConvertFrom-Json $minifiedString) | ConvertTo-Json -Depth 100 -Compress; #for PowerShell 7.3
 
     #$issuer = "https://vstoken.dev.azure.com/${organizationId}"
@@ -242,6 +254,7 @@ function New-FederatedCredential {
     return $responseJson
 }
 
+# This function pauses the script until the user presses a key.
 function PauseOn {
     param (
         [bool] $boolValue
