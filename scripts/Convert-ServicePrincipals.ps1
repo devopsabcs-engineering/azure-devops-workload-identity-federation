@@ -8,23 +8,6 @@ param (
     [bool]   $skipPauseAfterWarning = $false
 )
 
-# # sample production call
-# ./Convert-ServicePrincipals.ps1 -isProductionRun $true `
-#     -refreshServiceConnectionsIfTheyExist $true
-
-# # STEP 1
-# Write-Host 'Step 1: Login to your Azure account using Connect-AzAccount ...'
-
-# #Disconnect-AzAccount
-# Clear-AzContext -Force
-
-# $login = Connect-AzAccount
-
-# if (!$login) {
-#     Write-Error 'Error logging in and validating your credentials.'
-#     return;
-# }
-
 $totalNumberOfArmServiceConnections = 0
 $numberOfArmServiceConnectionsWithWorkloadIdentityFederationAutomatic = 0
 $numberOfArmServiceConnectionsWithWorkloadIdentityFederationManual = 0
@@ -42,26 +25,7 @@ $totalNumberOfArmServiceConnectionWithServicePrincipalThatDidNotConvertToWorkloa
 
 $hashTableAdoResources = @{}
 
-function Get-AzureDevOpsOrganizationOverview {
-    <#
-    .SYNOPSIS
-    Function for getting the list of all Azure DevOps organizations in your AzureAD tenant.
-
-    .DESCRIPTION
-    Function for getting the list of all Azure DevOps organizations that uses your AzureAD directory.
-    It is the same data as the downloaded csv from https://dev.azure.com/<organizationName>/_settings/organizationAad.    
-
-    .PARAMETER tenantId
-    Your Azure AD tenant ID.
-
-    .EXAMPLE
-    Get-AzureDevOpsOrganizationOverview -tenantId <YOUR-AZURE-AD-TENANT-ID>
-
-    Returns all DevOps organizations in your Azure tenant.
-
-    .NOTES
-    This will convert the downloaded csv data and save it to a json file.
-    #>
+function Get-AzureDevOpsOrganizationOverview {  
 
     [CmdletBinding()]
     param (
@@ -355,7 +319,8 @@ function Get-Body {
         [string] $authorizationScheme,
         [object] $serviceEndpointProjectReferences
     )
-           
+
+    # Create a custom object to hold the body of the request.
     $myBody = [PSCustomObject]@{
         id                               = $id
         type                             = $type
@@ -364,18 +329,19 @@ function Get-Body {
         }
         serviceEndpointProjectReferences = @( $serviceEndpointProjectReferences ) # array
     }
+    # Convert the custom object to JSON.
     $myBodyJson = $myBody | ConvertTo-Json -Depth $jsonDepth
 
     return $myBodyJson
 }
 
 function Get-Base64 {
+    # Convert a string to Base64.
     param (
-        [string] $MyPat
+        [string] $String
     )
-    #Convert To Base64   
-    $B64Pat = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("`:$MyPat"))
-    return $B64Pat
+    # Convert to Base64.   
+    return [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("`:$String"))
 }
 
 function Get-PatTokenBase64 {
@@ -403,26 +369,22 @@ function Get-AuthenticodeMode {
         return "Workload Identity Federation ($creationMode)"
     }
     elseif ($authorizationScheme -eq "ServicePrincipal") {
-        <# Action when this condition is true #>
         return "Service Principal ($creationMode)"
     }
     elseif ($authorizationScheme -eq "ManagedServiceIdentity") {
-        <# Action when this condition is true #>
         return "Managed Identity"
     }
     elseif ($authorizationScheme -eq "PublishProfile") {
-        <# Action when this condition is true #>
         return "Publish Profile"
     }
     else {
-        <# Action when all if and elseif conditions are false #>
         throw "Unexpected authorization scheme $authorizationScheme"
         return $authorizationScheme
     }
 }
 
 try {
-    # STEP 2
+    # STEP 1: Login to Azure and Get Service Connections
 
     Write-Host 'Login to your Azure account using az login (use an account that has access to your Microsoft Entra ID) ...'
 
@@ -440,7 +402,7 @@ try {
     $currentTenantId = $($account.tenantId)
     Write-Host "Current Tenant ID: $currentTenantId"
 
-    Write-Host "Step 2: Get Service Connections using az devops CLI and export to JSON $serviceConnectionJsonPath ..."
+    Write-Host "Step 1: Get Service Connections using az devops CLI and export to JSON $serviceConnectionJsonPath ..."
     $exported = Get-ServiceConnections -serviceConnectionJsonPath $serviceConnectionJsonPath `
         -refreshServiceConnectionsIfTheyExist $refreshServiceConnectionsIfTheyExist `
         -tenantId $currentTenantId
@@ -453,7 +415,7 @@ catch {
 }
 
 if ($exported) {
-    Write-Host 'Step 3: Loop through all service connections ...'
+    Write-Host 'Step 2: Loop through all service connections ...'
 
     $serviceConnectionJson = Get-Content -Path $serviceConnectionJsonPath -Raw
 
