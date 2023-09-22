@@ -83,7 +83,7 @@ as in this screenshot:
     ]
 }
 ```
-1. Then use the az cli with the application registration id (aka Client Id) `$appObjectId` as such:
+1. Then use the [az cli](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) with the application registration id (aka Client Id) `$appObjectId` as such:
 ```
 az ad app federated-credential create --id $appObjectId --parameters credential.json
 ```
@@ -152,4 +152,5 @@ generates a summary such as:
 
 - [Public preview of Workload identity federation for Azure Pipelines](https://devblogs.microsoft.com/devops/public-preview-of-workload-identity-federation-for-azure-pipelines/)
 - [Convert an existing ARM service connection to use workload identity federation](https://learn.microsoft.com/en-us/azure/devops/pipelines/library/connect-to-azure?view=azure-devops#convert-an-existing-arm-service-connection-to-use-workflow-identity-federation)
+- [How to install the Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
 - [Get started with Azure DevOps CLI](https://learn.microsoft.com/en-us/azure/devops/cli/?view=azure-devops)
