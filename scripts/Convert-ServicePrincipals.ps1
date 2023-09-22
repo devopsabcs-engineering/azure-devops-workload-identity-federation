@@ -271,6 +271,9 @@ function ConvertTo-WorkloadIdentityFederation {
         Write-Host "Trying url:"
         Write-Host $uri
         Write-Host
+        Write-Host "Trying body:"
+        Write-Host $body
+        Write-Host
     
         $response = Invoke-RestMethod $uri -Method 'PUT' -Headers $headers -Body $body
 
@@ -338,10 +341,10 @@ function Get-Body {
 function Get-Base64 {
     # Convert a string to Base64.
     param (
-        [string] $String
+        [string] $patToken
     )
     # Convert to Base64.   
-    return [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("`:$String"))
+    return [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("`:$patToken"))
 }
 
 function Get-PatTokenBase64 {
@@ -361,7 +364,7 @@ function Get-PatTokenBase64 {
         Write-Host "Found ADO PAT in environment variable `"ADO-PAT-TOKEN-TENANT-$tenantId`"."
     }
 
-    $AdoPATBase64 = Get-Base64 -MyPat $AdoPAT
+    $AdoPATBase64 = Get-Base64 -patToken $AdoPAT
    
     return $AdoPATBase64
 }
