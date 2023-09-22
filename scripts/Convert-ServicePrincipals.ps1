@@ -350,8 +350,16 @@ function Get-PatTokenBase64 {
     )
     #Expecting an environment variable such as ADO-PAT-TOKEN-TENANT-a34*****-****-****-****-************
     
-    Write-Host "ADO PAT is not set. Trying to get it from environment..."
-    $AdoPAT = [Environment]::GetEnvironmentVariable("ADO-PAT-TOKEN-TENANT-$tenantId", "User")    
+    Write-Host "ADO PAT is not set. Trying to get it from environment variable `"ADO-PAT-TOKEN-TENANT-$tenantId`" ..."
+    $AdoPAT = [Environment]::GetEnvironmentVariable("ADO-PAT-TOKEN-TENANT-$tenantId", "User")  
+    
+    if (!$AdoPAT) {
+        Write-Error "Could not find ADO PAT in environment variable `"ADO-PAT-TOKEN-TENANT-$tenantId`". Please set it and try again."
+        return
+    }
+    else {
+        Write-Host "Found ADO PAT in environment variable `"ADO-PAT-TOKEN-TENANT-$tenantId`"."
+    }
 
     $AdoPATBase64 = Get-Base64 -MyPat $AdoPAT
    
