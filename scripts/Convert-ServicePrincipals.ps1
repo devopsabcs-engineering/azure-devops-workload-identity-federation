@@ -1,5 +1,5 @@
 param (    
-    [string] $serviceConnectionJsonPath = "../data/service_connections.json",
+    #[string] $serviceConnectionJsonPath = "../data/service_connections.json",
     [int]    $jsonDepth = 100,
     [bool]   $isProductionRun = $false,
     [bool]   $refreshServiceConnectionsIfTheyExist = $false,
@@ -430,6 +430,7 @@ try {
     Write-Host "Current Tenant ID: $currentTenantId"
 
     Write-Host "Step 1: Get Service Connections using az devops CLI and export to JSON $serviceConnectionJsonPath ..."
+    $serviceConnectionJsonPath = "../data/service_connections_${currentTenantId}.json"
     $exported = Get-ServiceConnections -serviceConnectionJsonPath $serviceConnectionJsonPath `
         -refreshServiceConnectionsIfTheyExist $refreshServiceConnectionsIfTheyExist `
         -tenantId $currentTenantId

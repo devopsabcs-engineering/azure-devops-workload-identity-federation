@@ -398,6 +398,7 @@ FodyWeavers.xsd
 *.sln.iml
 
 service_connections.json
+service_connections_*.json
 organizations_*.json
 hashTableAdoResources.json
 credential.json
