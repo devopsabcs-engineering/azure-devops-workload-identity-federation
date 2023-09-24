@@ -5,7 +5,8 @@ param (
     [bool]   $refreshServiceConnectionsIfTheyExist = $false,
     [string] $apiVersion = "6.0-preview.4",
     [bool]   $skipPauseAfterError = $false,
-    [bool]   $skipPauseAfterWarning = $false
+    [bool]   $skipPauseAfterWarning = $false,
+    [bool]   $revertAll = $false
 )
 
 $totalNumberOfArmServiceConnections = 0
@@ -20,8 +21,10 @@ $numberOfFederatedCredentialsCreatedManually = 0
 $numberOfSharedArmServiceConnections = 0
 
 $totalNumberOfArmServiceConnectionWithServicePrincipalConvertedToWorkloadIdentityFederation = 0
-
 $totalNumberOfArmServiceConnectionWithServicePrincipalThatDidNotConvertToWorkloadIdentityFederation = 0
+
+$totalNumberOfArmServiceConnectionWithWorkloadIdentityFederationRevertedBackToServicePrincipal = 0
+$totalNumberOfArmServiceConnectionWithWorkloadIdentityFederationThatDidNotRevertBackToServicePrincipal = 0
 
 $hashTableAdoResources = @{}
 
@@ -266,7 +269,7 @@ function PauseOn {
     }
 }
 
-function ConvertTo-WorkloadIdentityFederation {
+function ConvertTo-OrRevertFromWorkloadIdentityFederation {
     param (
         [string] $body,
         [string] $patTokenBase64,
@@ -476,6 +479,25 @@ if ($exported) {
         Write-Host "Service Connection Name      : $serviceConnectionName"
         $endpointId = $($serviceConnection.id)
         Write-Host "Endpoint ID                  : $endpointId"
+        $revertSchemeDeadline = $($serviceConnection.data.revertSchemeDeadline)
+        Write-Host "Revert Scheme Deadline       : $revertSchemeDeadline"
+        $TimeSpan = $revertSchemeDeadline - (Get-Date -asUTC)
+        if ($revertSchemeDeadline) {
+            $totalDays = $TimeSpan.TotalDays        
+        }
+        else {
+            $totalDays = 0
+        }
+        $canRevert = $totalDays -gt 0        
+        if ($canRevert) {
+            $foregroundColor = "Green"
+        }
+        else {
+            $foregroundColor = "Red"
+        }
+        Write-Host "Can Revert                   : " -NoNewline
+        Write-Host "$canRevert" -ForegroundColor $foregroundColor
+        Write-Host "Total Days left to Revert    : $totalDays"
         
         $pauseNeeded = $false
         $creationMode = $($serviceConnection.data.creationMode)
@@ -558,78 +580,120 @@ if ($exported) {
             -serviceEndpointProjectReferences $serviceEndpointProjectReferences
         Write-Host $myBodyJson
 
-        
-        if ($authorizationScheme -eq "WorkloadIdentityFederation") {
-            Write-Host "Found workload identity service connection - will NOT convert"            
+        #common
+        $patTokenBase64 = Get-PatTokenBase64 -tenantId $tenantId  
+        if ($authorizationScheme -eq "ServicePrincipal") {
+            $destinationAuthorizationScheme = "WorkloadIdentityFederation"
         }
+        elseif ($authorizationScheme -eq "WorkloadIdentityFederation") {
+            $destinationAuthorizationScheme = "ServicePrincipal"
+        }   
+        else {
+            Write-Warning "Unexpected authorization scheme $authorizationScheme - will not convert (or revert)"
+        }
+        $myNewBodyJson = Get-Body -id $id `
+            -type $type `
+            -authorizationScheme $destinationAuthorizationScheme `
+            -serviceEndpointProjectReferences $serviceEndpointProjectReferences  
 
-        if ($authorizationScheme -eq "ServicePrincipal") {            
-            Write-Host "Found Service Principal - analyzing if it's a candidate to convert"            
-            if ($isProductionRun -and $tenantsMatch) {
-                $patTokenBase64 = Get-PatTokenBase64 -tenantId $tenantId   
-                $myNewBodyJson = Get-Body -id $id `
-                    -type $type `
-                    -authorizationScheme "WorkloadIdentityFederation" `
-                    -serviceEndpointProjectReferences $serviceEndpointProjectReferences         
-
-                if ($creationMode -eq "Manual") {
-                    Write-Host "Need to create fed cred for Manual Svc Conn"
-                    # $organizationId = Get-OrganizationId -tenantId $tenantId `
-                    #     -organizationName $organizationName
-
-                    if ($organizationId) {
-                        $existingFedCredsJson = az ad app federated-credential list --id  $applicationRegistrationClientId 
-                        $existingFedCreds = $existingFedCredsJson | ConvertFrom-Json
-                        $subject = "sc://$organizationName/$projectName/$serviceConnectionName"
-                        $matchingCred = $existingFedCreds | Where-Object { $_.Subject -eq $subject }
-                        if ($matchingCred) {
-                            Write-Host "cred with subject $subject ALREADY exists!"
-                            Write-Host $matchingCred 
-                        }
-                        else {
-                            Write-Warning "cred with subject $subject does not exist! Creating it now..."               
-
-                            $responseJson = New-FederatedCredential -organizationName $organizationName `
-                                -projectName $projectName `
-                                -organizationId $organizationId `
-                                -serviceConnectionName $serviceConnectionName `
-                                -endpointId $endpointId `
-                                -appObjectId $applicationRegistrationClientId
-                            
-                            if ($responseJson) {
-                                $numberOfFederatedCredentialsCreatedManually++
-                            }
-
+        if ($revertAll) {
+            if ($authorizationScheme -eq "WorkloadIdentityFederation") {
+                Write-Host "Found workload identity service connection - analyzing if it's a candidate to revert"   
+                if ($isProductionRun -and $tenantsMatch) {
+                    if ($canRevert) {
+                        $responseJson = ConvertTo-OrRevertFromWorkloadIdentityFederation -body $myNewBodyJson `
+                            -organizationName $organizationName `
+                            -endpointId $endpointId `
+                            -patTokenBase64 $patTokenBase64
+                        if ($responseJson) {
+                            Write-Host "Call was successful and returned JSON response:"
+                            Write-Host $responseJson
+                            Write-Host "Reverted service connection!"
+                            $totalNumberOfArmServiceConnectionWithWorkloadIdentityFederationRevertedBackToServicePrincipal++
                             PauseOn -boolValue (-not $skipPauseAfterError)
                         }
-                        
+                        else {
+                            Write-Warning "Got empty response (check above for message) so moving on..."
+                            $totalNumberOfArmServiceConnectionWithWorkloadIdentityFederationThatDidNotRevertBackToServicePrincipal++
+                        }
                     }
                     else {
-                        Write-Warning "Skipping creation of fed cred since we did not find org id in tenant"
+                        Write-Warning "Cannot revert since deadline has passed"
                     }
                 }
-                $responseJson = ConvertTo-WorkloadIdentityFederation -body $myNewBodyJson `
-                    -organizationName $organizationName `
-                    -endpointId $endpointId `
-                    -patTokenBase64 $patTokenBase64
-                if ($responseJson) {
-                    Write-Host "Call was successful and returned JSON response:"
-                    Write-Host $responseJson
-                    Write-Host "Converted service connection!"
-                    $totalNumberOfArmServiceConnectionWithServicePrincipalConvertedToWorkloadIdentityFederation++
-                    PauseOn -boolValue (-not $skipPauseAfterError)
-                }
                 else {
-                    Write-Warning "Got empty response (check above for message) so moving on..."
-                    $totalNumberOfArmServiceConnectionWithServicePrincipalThatDidNotConvertToWorkloadIdentityFederation++
-                }
+                    if (-not $isProductionRun) {
+                        Write-Host "Skipping reverting since not a production run"
+                    }
+                    else {
+                        Write-Host "tenants do NOT match so skipping reverting"
+                    }
+                }        
             }
-            else {
-                if (-not $isProductionRun) {
-                    Write-Host "Skipping conversion since not a production run"
+        }
+        else {        
+            if ($authorizationScheme -eq "ServicePrincipal") {            
+                Write-Host "Found Service Principal - analyzing if it's a candidate to convert"            
+                if ($isProductionRun -and $tenantsMatch) {
+                    if ($creationMode -eq "Manual") {
+                        Write-Host "Need to create fed cred for Manual Svc Conn"
+                        # $organizationId = Get-OrganizationId -tenantId $tenantId `
+                        #     -organizationName $organizationName
+
+                        if ($organizationId) {
+                            $existingFedCredsJson = az ad app federated-credential list --id  $applicationRegistrationClientId 
+                            $existingFedCreds = $existingFedCredsJson | ConvertFrom-Json
+                            $subject = "sc://$organizationName/$projectName/$serviceConnectionName"
+                            $matchingCred = $existingFedCreds | Where-Object { $_.Subject -eq $subject }
+                            if ($matchingCred) {
+                                Write-Host "cred with subject $subject ALREADY exists!"
+                                Write-Host $matchingCred 
+                            }
+                            else {
+                                Write-Warning "cred with subject $subject does not exist! Creating it now..."               
+
+                                $responseJson = New-FederatedCredential -organizationName $organizationName `
+                                    -projectName $projectName `
+                                    -organizationId $organizationId `
+                                    -serviceConnectionName $serviceConnectionName `
+                                    -endpointId $endpointId `
+                                    -appObjectId $applicationRegistrationClientId
+                            
+                                if ($responseJson) {
+                                    $numberOfFederatedCredentialsCreatedManually++
+                                }
+
+                                PauseOn -boolValue (-not $skipPauseAfterError)
+                            }
+                        
+                        }
+                        else {
+                            Write-Warning "Skipping creation of fed cred since we did not find org id in tenant"
+                        }
+                    }
+                    $responseJson = ConvertTo-OrRevertFromWorkloadIdentityFederation -body $myNewBodyJson `
+                        -organizationName $organizationName `
+                        -endpointId $endpointId `
+                        -patTokenBase64 $patTokenBase64
+                    if ($responseJson) {
+                        Write-Host "Call was successful and returned JSON response:"
+                        Write-Host $responseJson
+                        Write-Host "Converted service connection!"
+                        $totalNumberOfArmServiceConnectionWithServicePrincipalConvertedToWorkloadIdentityFederation++
+                        PauseOn -boolValue (-not $skipPauseAfterError)
+                    }
+                    else {
+                        Write-Warning "Got empty response (check above for message) so moving on..."
+                        $totalNumberOfArmServiceConnectionWithServicePrincipalThatDidNotConvertToWorkloadIdentityFederation++
+                    }
                 }
                 else {
-                    Write-Host "tenants do NOT match so skipping conversion"
+                    if (-not $isProductionRun) {
+                        Write-Host "Skipping conversion since not a production run"
+                    }
+                    else {
+                        Write-Host "tenants do NOT match so skipping conversion"
+                    }
                 }
             }
         }
@@ -649,6 +713,9 @@ if ($exported) {
         Write-Host
         Write-Host "Total Number of Arm Service Connections Converted                        : $totalNumberOfArmServiceConnectionWithServicePrincipalConvertedToWorkloadIdentityFederation"
         Write-Host "Total Number of Arm Service Connections That did NOT Convert             : $totalNumberOfArmServiceConnectionWithServicePrincipalThatDidNotConvertToWorkloadIdentityFederation"
+        Write-Host
+        Write-Host "Total Number of Arm Service Connections Reverted                         : $totalNumberOfArmServiceConnectionWithWorkloadIdentityFederationRevertedBackToServicePrincipal"
+        Write-Host "Total Number of Arm Service Connections That did NOT revert              : $totalNumberOfArmServiceConnectionWithWorkloadIdentityFederationThatDidNotRevertBackToServicePrincipal"
         Write-Host
         Write-Host "Number Of Federated Credentials Created Manually                         : $numberOfFederatedCredentialsCreatedManually"
         Write-Host "Number Of Shared Arm Service Connections                                 : $numberOfSharedArmServiceConnections"
