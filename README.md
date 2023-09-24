@@ -49,6 +49,14 @@ Whether you convert the service connection in the Azure DevOps UI or programmati
 You have 7 days to revert back to a service principal. The same PUT call will work after simply changing the payload's `authorization.scheme` from `WorkloadIdentityFederation` to `ServicePrincipal`.
 Reverting looks like this in the Azure DevOps portal:
 ![reverting a converted sc](./media/reverting_a_conversion_with_typo_as_in_preview.png)
+A sample production run to revert all is:
+```
+./Convert-ServicePrincipals.ps1 -isProductionRun $true `
+     -refreshServiceConnectionsIfTheyExist $true `
+     -revertAll $true
+```
+generates a summary such as:
+![revert_all_summary](./media/revert_all_summary.png)
 
 ## Handling Manual Conversions
 
