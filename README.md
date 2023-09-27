@@ -219,3 +219,4 @@ generates a summary such as:
 - [How to install the Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
 - [Get started with Azure DevOps CLI](https://learn.microsoft.com/en-us/azure/devops/cli/?view=azure-devops)
 - [Azure DevOps Service Connection Security](https://microsoft.github.io/code-with-engineering-playbook/continuous-integration/dev-sec-ops/azure-devops/service-connection-security/)
+- [Azure DevOps Workload Identity Federation - DevOps ABCs Blog](https://blog.devopsabcs.com/index.php/2023/09/23/azure-devops-workload-identity-federation/)
